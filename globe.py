@@ -48,10 +48,21 @@ def shade(brightness, light, ca, sa):
     return max(0.0, min(1.0, b * 1.15))  # boost contrast a touch
 
 
+def _star_char(col, row, seed):
+    """Deterministic pseudo-random star for a background cell (or None)."""
+    v = (seed * 1000003 ^ col * 73856093 ^ row * 19349663) & 0xFFFFFFFF
+    if v % 101 == 0:
+        return "*"
+    if v % 37 == 0:
+        return "."
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Character-based frame rendering
 # ---------------------------------------------------------------------------
-def render_frame(cols, rows, tilt_deg, angle, ramp, light, grid_on, color=False):
+def render_frame(cols, rows, tilt_deg, angle, ramp, light, grid_on, color=False,
+                 stars_on=False, seed=0):
     """Render one frame using a character ramp. Returns (text, None)."""
     r = max(1, min(cols // 4, int(rows * 0.42)))  # radius in units
     cx, cy = cols // 2, rows // 2
@@ -71,19 +82,26 @@ def render_frame(cols, rows, tilt_deg, angle, ramp, light, grid_on, color=False)
                 if 0 <= ix < cols and 0 <= iy < rows:
                     grid_cells.add((iy, ix))
 
+    def star_char(ix, iy):
+        if not stars_on:
+            return " "
+        return _star_char(ix, iy, seed) or " "
+
     out = []
     for iy in range(rows):
         dy = (iy - cy) / r
         if dy < -1.0 or dy > 1.0:
-            out.append((" " * cols) if not color else ("\x1b[0m" + " " * cols))
+            # entirely outside the globe: a starfield row
+            row = "".join(star_char(ix, iy) for ix in range(cols))
+            out.append(row if not color else "\x1b[0m" + row)
             continue
         cell = []
         for ix in range(0, cols, 2):
             dx = ((ix + 1) - cx) / (2 * r)   # 2 cells per unit x
             d2 = dx * dx + dy * dy
             if d2 > 1.0:
-                cell.append(" ")
-                cell.append(" ")
+                cell.append(star_char(ix, iy))
+                cell.append(star_char(ix + 1, iy))
                 continue
             z = math.sqrt(1.0 - d2)
             b = shade((dx, dy, z), light, ca, sa)
@@ -91,9 +109,10 @@ def render_frame(cols, rows, tilt_deg, angle, ramp, light, grid_on, color=False)
             if (iy, ix) in grid_cells or (iy, ix + 1) in grid_cells:
                 ch = "#"
             if color:
-                shade_c = 232 + int(b * 23)
-                ch = ("\x1b[38;5;117m#" if ch == "#"
-                      else "\x1b[38;5;%dm%s" % (shade_c, ch))
+                if ch == "#":
+                    ch = "\x1b[38;5;117m#"
+                else:
+                    ch = "\x1b[38;5;%dm%s" % (232 + int(b * 23), ch)
             cell.append(ch)
             cell.append(ch)
         if color:
@@ -113,7 +132,7 @@ def _braille_mask(row, col):
 
 
 def render_braille_frame(cols, rows, tilt_deg, angle, light, grid_on,
-                         threshold=0.16):
+                         threshold=0.16, stars_on=False, seed=0):
     """Render one frame as braille characters. Returns (text, None).
 
     Each terminal cell becomes a 2x4 dot bitmap, so a small terminal still
@@ -141,6 +160,13 @@ def render_braille_frame(cols, rows, tilt_deg, angle, light, grid_on,
     for i in range(rows):
         line = []
         for j in range(cols):
+            # background (empty) cell -> optional single-dot star
+            if (2 * j + 1 - cx) ** 2 + (4 * i + 2 - cy) ** 2 > r * r:
+                if stars_on and _star_char(j, i, seed):
+                    line.append(chr(BRAILLE_BASE + _braille_mask(1, 1)))
+                else:
+                    line.append(" ")
+                continue
             mask = 0
             for drr in range(4):
                 for dcc in range(2):
@@ -151,7 +177,8 @@ def render_braille_frame(cols, rows, tilt_deg, angle, light, grid_on,
                         continue
                     z = math.sqrt(1.0 - d2)
                     b = shade((dx, dy, z), light, ca, sa)
-                    if b > threshold or (4 * i + drr, 2 * j + dcc) in grid_dots:
+                    # wireframe globe: dots on the lat/long grid only (no fill)
+                    if (4 * i + drr, 2 * j + dcc) in grid_dots:
                         mask |= _braille_mask(drr, dcc)
             # Empty cell -> blank space keeps the background clean.
             line.append(chr(BRAILLE_BASE + mask) if mask else " ")
@@ -209,6 +236,10 @@ def parse_args(argv):
                     help="rendering style; auto picks by terminal size")
     ap.add_argument("--grid", default="on", choices=["on", "off"],
                     help="overlay latitude/longitude lines")
+    ap.add_argument("--stars", default="on", choices=["on", "off"],
+                    help="render a starfield behind the globe")
+    ap.add_argument("--seed", type=int, default=0,
+                    help="starfield seed (deterministic background)")
     ap.add_argument("--color", default="auto",
                     choices=["auto", "on", "off"],
                     help="ANSI color shading (char styles only)")
@@ -248,6 +279,7 @@ def main(argv=None):
 
     # On small char-mode terminals, auto-drop the grid: it overwhelms the globe.
     grid_on = args.grid == "on" and not (small and charset != "braille")
+    stars_on = args.stars == "on"
 
     ramps = {"classic": RAMP_CLASSIC, "block": RAMP_BLOCK,
              "solid": RAMP_SOLID, "minimal": RAMP_MINIMAL}
@@ -271,11 +303,13 @@ def main(argv=None):
 
             if charset == "braille":
                 text, _ = render_braille_frame(cols, rows, args.tilt, ang,
-                                               light, grid_on)
+                                               light, grid_on,
+                                               stars_on=stars_on, seed=args.seed)
             else:
                 text, _ = render_frame(cols, rows, args.tilt, ang,
                                        make_ramp(ramps[charset]), light,
-                                       grid_on, color_on)
+                                       grid_on, color_on,
+                                       stars_on=stars_on, seed=args.seed)
             sys.stdout.write("\x1b[H" + text)
             sys.stdout.flush()
 
