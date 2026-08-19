@@ -12,6 +12,12 @@ resize the window, and it works on any system with a Python 3 interpreter
 That's it. The globe fills your terminal and spins in place until you press
 Ctrl+C.
 
+## Demo
+
+![20s screencap of the braille rendering](demo.gif)
+
+*Braille charset (`auto` on a small terminal) over 20 seconds.*
+
 ## Options
 
     python3 globe.py --help
