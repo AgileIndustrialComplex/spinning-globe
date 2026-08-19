@@ -14,9 +14,9 @@ Ctrl+C.
 
 ## Demo
 
-![20s screencap of the braille rendering](demo.gif)
+![20s screencap of the braille rendering with a starfield](demo.gif)
 
-*Braille charset (`auto` on a small terminal) over 20 seconds.*
+*Braille charset (small terminal) rendering `--stars` over 20 seconds.*
 
 ## Options
 
@@ -29,6 +29,8 @@ Ctrl+C.
 | `--tilt`      | 23.4     | Axial tilt in degrees (23.4° = Earth's real axial tilt) |
 | `--charset`   | auto     | Rendering style; `auto` picks by terminal size |
 | `--grid`      | on       | Overlay latitude/longitude lines (`on`/`off`) |
+| `--stars`     | on       | Render a starfield behind the globe |
+| `--seed`      | 0        | Starfield seed (deterministic background) |
 | `--color`     | auto     | ANSI color shading (`auto`/`on`/`off`) |
 | `--cols/--rows` | auto | Force a fixed terminal size (mainly for debugging) |
 
@@ -55,18 +57,21 @@ Ctrl+C.
 3. A simple Lambert shading model computes how much light each surface
    point receives from a fixed light source and maps that brightness to a
    character from an ASCII ramp (` .:-=+*#%@` for the classic look).
-4. Freely rotating, the pattern of continents-like shading keeps the globe
-   recognizably "spinning" instead of just wobbling.
+4. Freely rotating, the shading pattern keeps the globe recognizably
+   "spinning" instead of just wobbling.
+5. A deterministic starfield (seeded via `--seed`) fills the blank space
+   behind the globe each frame.
 
 ## Files
 
-- `globe.py` — the whole program in one file, ~150 lines of pure stdlib.
+- `globe.py` — the whole program, pure stdlib (renders the globe + stars).
 - `README.md` — this file.
 
 ## Ideas to extend
 
-- Draw actual Earth continents (project a world map's lon/lat onto the sphere).
-- Add stars/background, a moon, or speed-controlled spin with arrow keys.
-- Emit frames to a file or GIF via the `--seren`-style flags for offline renders.
+- Add a moon, or speed-controlled spin with arrow keys.
+- Emit frames to a file or GIF via `--seren`-style flags for offline renders.
+- Re-draw Earth's continents (a compact land mask) so the shaded globe shows real landmasses.
+- Let the starfield twinkle (vary star brightness between frames).
 
 MIT license — do whatever you want with it.
